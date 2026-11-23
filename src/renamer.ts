@@ -38,6 +38,7 @@ export interface RenameConversationResult {
   newTitle: string;
   reason?: string;
   uiRefreshHint: "active_live_sync" | "idle_restart_required" | "unchanged";
+  coldSyncHint?: string;
   updatedTargets: {
     pbtxt: boolean;
     sqliteSummaries: boolean;
@@ -212,6 +213,12 @@ export function renameConversation(
     newTitle,
     reason: options?.reason,
     uiRefreshHint: dbRes.wasActive ? "active_live_sync" : "idle_restart_required",
+    ...(dbRes.wasActive
+      ? {}
+      : {
+          coldSyncHint:
+            "历史空闲对话在普通退出重启时可能被运行中进程的内存旧缓存覆写 SQLite（.pbtxt 已安全保留）。请运行 `npm run sync-relaunch` 执行冷同步并安全重启 Antigravity 使其立即生效。",
+        }),
     updatedTargets: {
       pbtxt: true,
       sqliteSummaries: true,

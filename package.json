@@ -27,6 +27,7 @@
     "test": "npm run build && node --test dist/tests/*.test.js",
     "setup": "node scripts/setup.mjs",
     "uninstall-agy": "node scripts/uninstall.mjs",
+    "sync-relaunch": "node scripts/sync-and-relaunch.mjs",
     "start": "node dist/src/index.js"
   },
   "dependencies": {

@@ -254,21 +254,40 @@ export function patchSummariesProtoCache(
   conversationId: string,
   patchedRawSummary: Buffer,
 ): { buffer: Buffer; updated: boolean } {
+  const res = patchSummariesProtoCacheBatch(
+    cacheBuf,
+    new Map([[conversationId, patchedRawSummary]]),
+  );
+  return { buffer: res.buffer, updated: res.updatedCount > 0 };
+}
+
+/**
+ * 单次扫描无损批量更新 agyhub_summaries_proto.pb 中多个 conversationId 对应的 raw_summary 条目。
+ */
+export function patchSummariesProtoCacheBatch(
+  cacheBuf: Buffer,
+  patchedByConvId: ReadonlyMap<string, Buffer>,
+): { buffer: Buffer; updatedCount: number } {
+  if (patchedByConvId.size === 0) {
+    return { buffer: cacheBuf, updatedCount: 0 };
+  }
   const fields = parseProtoFields(cacheBuf);
-  let updated = false;
+  let updatedCount = 0;
   const outputChunks: Buffer[] = [];
 
   for (const field of fields) {
     if (field.fieldNumber === 1 && field.wireType === 2 && field.payload) {
       const subFields = parseProtoFields(field.payload);
       const idChunk = subFields.find((s) => s.fieldNumber === 1 && s.wireType === 2 && s.payload);
-      if (idChunk?.payload?.toString("utf8") === conversationId) {
+      const convId = idChunk?.payload?.toString("utf8");
+      const replacement = convId ? patchedByConvId.get(convId) : undefined;
+      if (replacement) {
         let replacedSummary = false;
         const newSubChunks: Buffer[] = [];
         for (const sub of subFields) {
           if (sub.fieldNumber === 2 && sub.wireType === 2) {
             if (!replacedSummary) {
-              newSubChunks.push(makeLengthDelimitedField(2, patchedRawSummary));
+              newSubChunks.push(makeLengthDelimitedField(2, replacement));
               replacedSummary = true;
             }
           } else {
@@ -276,10 +295,10 @@ export function patchSummariesProtoCache(
           }
         }
         if (!replacedSummary) {
-          newSubChunks.push(makeLengthDelimitedField(2, patchedRawSummary));
+          newSubChunks.push(makeLengthDelimitedField(2, replacement));
         }
         outputChunks.push(makeLengthDelimitedField(1, Buffer.concat(newSubChunks)));
-        updated = true;
+        updatedCount++;
         continue;
       }
     }
@@ -290,5 +309,5 @@ export function patchSummariesProtoCache(
   if (!validateWireFormat(result)) {
     throw new Error("补丁后的 agyhub_summaries_proto.pb 未通过 Protobuf Wire 格式校验");
   }
-  return { buffer: result, updated };
+  return { buffer: result, updatedCount };
 }

@@ -106,9 +106,18 @@ npm install; if ($LASTEXITCODE -eq 0) { npm run setup }
 ### 方式三：话题偏离时自动触发
 当你从最初的问题（例如“你好，帮我看个报错”）逐步深入到具体工程任务（例如“重构登录鉴权中间件”）后，Antigravity 会在合适时机自动调用 `get_conversation_title` 检查现有标题，确认偏离后调用 `rename_conversation` 更新标题，且不会在主题未变时反复改名。
 
-### 方式四：查看或整理历史对话
-- `列出最近 10 条对话`
+### 方式四：查看或批量整理历史对话
+- `列出最近 10 条对话` / `列出当前项目下的历史对话`
 - `把刚才那个标题为 "Untitled" 的历史对话改成「部署 Docker 监控栈」`
+
+> **批量修改历史空闲（IDLE）对话后的生效说明**：
+> - **当前正在聊的活跃对话**改名后会实时刷新且重启不丢失；
+> - **历史空闲对话**由于运行中的 Antigravity 在内存里缓存了旧摘要，普通退出（`Cmd+Q`）时退出保存钩子会把内存旧标题写回数据库（但 `annotations/*.pbtxt` 中的新标题会完好保留）。批量整理完历史标题后，运行一次一键冷同步刷新命令即可阻断退出脏写回、把所有 `.pbtxt` 新标题同步回数据库并重新拉起 Antigravity：
+>   ```sh
+>   cd ~/.local/share/antigravity-conversation-renamer-mcp
+>   npm run sync-relaunch
+>   ```
+>   支持可选参数：`--dry-run`（仅预览待同步项）、`--sync-only`（仅写盘不重启）、`--no-relaunch`（冷同步后不自动拉起）、`--detached`（从 Antigravity 内调用时脱离父进程后台执行）。
 
 ---
 
@@ -170,13 +179,15 @@ npm run setup
 │   ├── sqliteStore.ts    # SQLite WAL 事务读写（conversation_summaries + FTS5）
 │   └── paths.ts          # 数据路径解析与 conversation_id 安全校验
 ├── scripts/
-│   ├── setup.mjs         # 一键编译、测试并无损写入全局配置
-│   └── uninstall.mjs     # 一键安全卸载全局配置（保留已有对话）
+│   ├── setup.mjs             # 一键编译、测试并无损写入全局配置
+│   ├── uninstall.mjs         # 一键安全卸载全局配置（保留已有对话）
+│   └── sync-and-relaunch.mjs # 批量历史改名后一键冷同步 .pbtxt 至 DB 并安全重启
 ├── tests/
 │   ├── pbtxtPatcher.test.ts
 │   ├── protoPatcher.test.ts
 │   ├── renamer.e2e.test.ts
-│   └── setup.test.ts
+│   ├── setup.test.ts
+│   └── syncPbtxt.test.ts
 ├── templates/
 │   ├── mcp_config.snippet.json
 │   ├── conversation-auto-rename.md
@@ -224,8 +235,8 @@ cd ~ && rm -rf ~/.local/share/antigravity-conversation-renamer-mcp
 
 1. **Antigravity 中看不到 `conversation-renamer` 或启动报错 `spawn node ENOENT`**
    - 确认 `~/.gemini/config/mcp_config.json` 中的 `command` 是 `which node` 返回的绝对路径，且版本 `>= 22.5.0`（使用 `npm run setup` 会自动写入正确路径）。
-2. **修改历史对话标题后，左侧边栏没有立刻变化？**
-   - 活跃对话会由 `language_server` 实时同步刷新；历史空闲对话如前端缓存尚未重绘，切换列表或重新加载客户端即可看到最新标题，且全文搜索（FTS5）立即生效。
+2. **批量修改历史空闲对话标题后，侧边栏没变化甚至普通重启后还原了？**
+   - 活跃对话会由 `language_server` 实时同步刷新；历史空闲对话的旧摘要缓存在运行中进程内存里，普通退出（`Cmd+Q`）时退出钩子会覆盖数据库，但 `annotations/*.pbtxt` 中的新标题完好保留。运行 `npm run sync-relaunch` 即可在冷状态下将全部 `.pbtxt` 新标题同步回 SQLite / FTS5 / 缓存并安全重启 Antigravity 立即生效。
 3. **会损坏 Antigravity 的对话数据吗？**
    - 不会。所有修改仅针对标题相关字段，`.pbtxt` 与 `.pb` 采用同目录临时文件 + `rename` 原子替换；Protobuf 使用 Wire 级局部 Patch 并在落盘前做完整性校验，保留全部未知字段；SQLite 使用 `busy_timeout = 5000` 与 `BEGIN IMMEDIATE` 短事务，不触碰 WAL 文件与运行时状态字段。
 
