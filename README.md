@@ -150,6 +150,23 @@ npm test        # 编译并运行全部单元测试与 Stdio MCP 端到端沙盒
 
 ---
 
+## 卸载
+
+卸载本 MCP 不会影响或删除任何已有对话记录，已修改好的对话标题也会继续保留。按以下步骤即可彻底清理：
+
+1. **移除全局 MCP 配置**：编辑 `~/.gemini/config/mcp_config.json`，删除 `mcpServers` 中的 `conversation-renamer` 字段并保存。
+2. **删除自动触发规则**（如曾安装）：
+   ```sh
+   rm -f ~/.gemini/config/rules/conversation-auto-rename.md
+   ```
+3. **生效清理**：重启 Antigravity（或在 **Additional Options (`...`) → MCP Servers** 中刷新）。
+4. **删除本地代码目录**（可选）：
+   ```sh
+   rm -rf /ABSOLUTE/PATH/TO/antigravity-conversation-renamer-mcp
+   ```
+
+---
+
 ## 常见问题
 
 1. **Antigravity 中看不到 `conversation-renamer` 或启动报错 `spawn node ENOENT`**
