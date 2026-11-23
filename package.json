@@ -1,0 +1,38 @@
+{
+  "name": "conversation-renamer-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for dynamically renaming Google Antigravity conversation titles cleanly on disk.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/falconchen/antigravity-conversation-renamer-mcp.git"
+  },
+  "keywords": [
+    "antigravity",
+    "mcp",
+    "model-context-protocol",
+    "conversation-renamer",
+    "google-antigravity"
+  ],
+  "type": "module",
+  "main": "dist/src/index.js",
+  "bin": {
+    "conversation-renamer-mcp": "dist/src/index.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "start": "node dist/src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.2"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "conversation-renamer": {
+      "command": "/ABSOLUTE/PATH/TO/node",
+      "args": [
+        "/ABSOLUTE/PATH/TO/antigravity-conversation-renamer-mcp/dist/src/index.js"
+      ]
+    }
+  }
+}
