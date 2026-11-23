@@ -2,7 +2,78 @@
 
 一个面向 **Google Antigravity** 的轻量级 TypeScript / Node.js Stdio MCP Server。
 
-在 Antigravity 中开启对话时，初始标题往往由第一条消息自动生成；随着讨论逐步展开，实际任务很容易偏离最初的标题。通过本 MCP，Antigravity 可以在话题明显转向或收到你的指令时，**免辅助功能权限、无需重启客户端**，自动无损地重命名当前或历史对话标题，并实时反映在界面与检索中。
+在 Antigravity 中开启对话时，初始标题往往由第一条消息自动生成；随着讨论逐步展开，实际任务很容易偏离最初的标题。通过本 MCP，Antigravity 可以在话题明显转向、输入 `/rename` 或收到你的指令时，**免辅助功能权限、无需重启客户端**，自动无损地重命名当前或历史对话标题，并实时反映在界面与检索中。
+
+---
+
+## 最简安装：直接让 Antigravity 自己装（推荐）
+
+打开任意一个 Antigravity 对话，直接复制下面这句话发给它即可：
+
+```text
+请阅读 https://github.com/falconchen/antigravity-conversation-renamer-mcp 的 README，按其中的「AI Agent 自动安装指南」帮我完成安装、测试与配置。
+```
+
+> 如果你只想要 `/rename` 手动改名，不希望 AI 在话题偏离时自动改名，可以把上面那句话改成：`...安装配置（加上 --no-rule，仅启用手动和 /rename）`。
+
+---
+
+## AI Agent 自动安装指南（For AI Assistants）
+
+> **致正在阅读本文档的 AI Agent（Antigravity / Claude Code / Codex 等）**：请严格按以下幂等步骤为用户完成安装，不要将本仓库克隆到用户当前的业务项目目录中，也不要覆盖用户原有的 `mcp_config.json` 其他配置。
+
+### 前置条件
+- 需要 **Node.js >= 22.5.0**（用于内置 `node:sqlite`，零原生编译依赖）。
+- 在非交互 Shell 中（尤其是 macOS 使用 `nvm` / `fnm` / `volta` / Homebrew 的环境），请先探测并加入常见 Node 路径，确认 `node -v` 满足 `>= 22.5.0`；若不满足，请暂停并告知用户先安装或切换到 Node.js 22.5+（推荐 Node 22 LTS 或 24+）。
+
+### 执行步骤（推荐合并为单条命令执行）
+
+1. **固定安装目录**：使用 `~/.local/share/antigravity-conversation-renamer-mcp`（若目录已存在则 `git pull --ff-only`，避免污染用户当前工作区）。
+2. **安装依赖、跑沙盒测试并自动写入配置**：直接运行 `npm install && npm run setup`。
+   - `scripts/setup.mjs` 会自动完成：
+     - 校验 Node 版本 >= 22.5.0；
+     - 编译 TypeScript 并运行全部单元测试与沙盒 Stdio MCP 端到端测试；
+     - 自动使用当前 `node` 绝对路径（`process.execPath`）增量合并写入 `~/.gemini/config/mcp_config.json` 中的 `mcpServers["conversation-renamer"]`，**保留用户所有原有 MCP 配置**；
+     - 部署混合模式自动触发规则到 `~/.gemini/config/rules/conversation-auto-rename.md`（若用户要求关闭自动触发则加 `-- --no-rule`）；
+     - 部署 `/rename` 斜杠命令 Skill 到 `~/.gemini/config/skills/rename/SKILL.md`（若不需要则加 `-- --no-skill`）。
+
+macOS / Linux 一键执行命令模板（Agent 可直接运行）：
+
+```sh
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.volta/bin:$HOME/.fnm:$PATH"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  LATEST_NVM=$(ls -1 "$HOME/.nvm/versions/node" | sort -V | tail -n 1)
+  [ -n "$LATEST_NVM" ] && export PATH="$HOME/.nvm/versions/node/$LATEST_NVM/bin:$PATH"
+fi
+INSTALL_DIR="$HOME/.local/share/antigravity-conversation-renamer-mcp"
+if [ -d "$INSTALL_DIR/.git" ]; then
+  git -C "$INSTALL_DIR" pull --ff-only
+else
+  mkdir -p "$(dirname "$INSTALL_DIR")"
+  git clone https://github.com/falconchen/antigravity-conversation-renamer-mcp.git "$INSTALL_DIR"
+fi
+cd "$INSTALL_DIR" && npm install && npm run setup
+```
+
+Windows PowerShell 命令模板：
+
+```powershell
+$InstallDir = Join-Path $HOME ".local\share\antigravity-conversation-renamer-mcp"
+if (Test-Path (Join-Path $InstallDir ".git")) {
+  git -C $InstallDir pull --ff-only
+} else {
+  New-Item -ItemType Directory -Force -Path (Split-Path $InstallDir) | Out-Null
+  git clone https://github.com/falconchen/antigravity-conversation-renamer-mcp.git $InstallDir
+}
+Set-Location $InstallDir
+npm install; if ($LASTEXITCODE -eq 0) { npm run setup }
+```
+
+### 安装后提示用户
+执行成功后，向用户报告：
+1. 安装目录、`node` 绝对路径以及写入的配置文件路径；
+2. 提醒用户**重启 Antigravity（或在 Additional Options `...` → MCP Servers 中刷新）**使配置生效；
+3. 生效后可直接在对话框输入 `/rename` 或“根据内容更新当前对话标题”进行测试。
 
 ---
 
@@ -15,41 +86,49 @@
   2. `~/.gemini/antigravity/conversation_summaries.db` 的 `conversation_summaries` 表（更新 `title`、`preview`，无损局部改写 `raw_summary` 的 Field `1` 与 `15.1`，保留所有其余与未知字段）
   3. `conversation_summaries.db` 的 `conversations_fts` 虚拟表（无损重建 `chunk_index = -1` 标题检索行，不触碰正文索引）
   4. `~/.gemini/antigravity/agyhub_summaries_proto.pb`（局部替换对应会话条目，原子写回）
-- **混合模式触发**：配套 `always_on` 全局规则模板，同时支持“话题偏离时自动改名”和“随时手动指令改名”。
+- **混合模式触发 + `/rename` 斜杠命令**：既支持话题偏离自动更新，也支持随时 `/rename` 一键改名。
 - **免系统权限弹窗**：纯本地磁盘无损读写，不依赖 macOS Accessibility 辅助功能，不抢占前台焦点，不查杀 Antigravity 进程。
 
 ---
 
-## 环境要求
+## 使用方法
 
-- **Google Antigravity** 桌面端或 CLI
-- **Node.js >= 22.5.0**（需要内置 `node:sqlite` 支持，推荐使用 Node 22 LTS 或 Node 24+）
+安装并重启/刷新 Antigravity 后，支持以下全部方式：
 
-检查本机 Node 版本与绝对路径：
+### 方式一：`/rename` 斜杠命令
+- `/rename`：自动根据当前对话内容总结最贴切的新标题并更新
+- `/rename 排查 Redis 内存泄漏`：直接将当前对话重命名为指定标题
 
-```sh
-node -v
-which node
-```
+### 方式二：自然语言手动改名
+- `把当前对话标题改为「排查 Redis 内存泄漏」`
+- `根据目前聊的内容，更新一下当前对话标题`
+
+### 方式三：话题偏离时自动触发
+当你从最初的问题（例如“你好，帮我看个报错”）逐步深入到具体工程任务（例如“重构登录鉴权中间件”）后，Antigravity 会在合适时机自动调用 `get_conversation_title` 检查现有标题，确认偏离后调用 `rename_conversation` 更新标题，且不会在主题未变时反复改名。
+
+### 方式四：查看或整理历史对话
+- `列出最近 10 条对话`
+- `把刚才那个标题为 "Untitled" 的历史对话改成「部署 Docker 监控栈」`
 
 ---
 
-## 安装与配置
+## 手动安装与自定义配置
 
-### 1. 克隆并构建项目
+如果你想自己控制安装路径或手动编辑配置：
 
 ```sh
 git clone https://github.com/falconchen/antigravity-conversation-renamer-mcp.git
 cd antigravity-conversation-renamer-mcp
 npm install
-npm run build
+npm run setup
 ```
 
-> 可运行 `npm test` 执行全量单元测试与隔离沙盒下的真实 Stdio MCP 端到端链路测试。
+`npm run setup` 支持以下可选参数：
+- `npm run setup -- --no-rule`：不安装自动触发规则（仅使用手动对话或 `/rename`）
+- `npm run setup -- --no-skill`：不安装 `/rename` 斜杠命令 Skill
+- `npm run setup -- --skip-test`：跳过测试直接配置
 
-### 2. 注册全局 MCP 服务
-
-编辑（或新建）Antigravity 全局 MCP 配置文件 `~/.gemini/config/mcp_config.json`，在 `mcpServers` 中新增 `conversation-renamer` 节点（参考 [`templates/mcp_config.snippet.json`](./templates/mcp_config.snippet.json)）：
+如需纯手工配置，可参考 [`templates/mcp_config.snippet.json`](./templates/mcp_config.snippet.json) 将以下内容合并到 `~/.gemini/config/mcp_config.json`（`command` 请填写 `which node` 返回的绝对路径）：
 
 ```json
 {
@@ -64,59 +143,7 @@ npm run build
 }
 ```
 
-> **重要提示**：
-> - `command` 请填写 `which node` 输出的**绝对路径**（尤其是使用 `nvm` / `fnm` / `volta` 的 macOS 用户，GUI 启动 Antigravity 时非交互 `PATH` 通常不包含版本管理器目录）。
-> - `args[0]` 请填写编译后 `dist/src/index.js` 的**绝对路径**。
-> - 如需指定自定义 Antigravity 数据目录，可在该节点下添加 `"env": { "ANTIGRAVITY_DATA_DIR": "/custom/path" }`（默认 `~/.gemini/antigravity`）。
-
-### 3. （推荐）安装混合模式自动触发规则
-
-若希望 Antigravity 在对话主题偏离时**自动判断并更新标题**，将 [`templates/conversation-auto-rename.md`](./templates/conversation-auto-rename.md) 复制到全局规则目录：
-
-```sh
-mkdir -p ~/.gemini/config/rules
-cp ./templates/conversation-auto-rename.md ~/.gemini/config/rules/conversation-auto-rename.md
-```
-
-> 如果你只希望在自己明确开口要求时才改名，可以跳过此步骤，仅配置第 2 步的 MCP 即可。
-
-### 4. （可选）安装 `/rename` 斜杠命令 Skill
-
-若希望在输入框中直接键入 `/rename` 一键触发重命名，将 [`templates/skills/rename/SKILL.md`](./templates/skills/rename/SKILL.md) 复制到全局 Skills 目录：
-
-```sh
-mkdir -p ~/.gemini/config/skills/rename
-cp ./templates/skills/rename/SKILL.md ~/.gemini/config/skills/rename/SKILL.md
-```
-
-### 5. 重启或刷新 Antigravity
-
-重启 Antigravity（或在菜单 **Additional Options (`...`) → MCP Servers** 中刷新）即可生效。
-
----
-
-## 使用方法
-
-启用后，你可以在任意对话中直接使用以下方式：
-
-### 方式一：`/rename` 斜杠命令（安装了 Skill 后）
-- `/rename`：自动根据当前对话内容总结最贴切的新标题并更新
-- `/rename 排查 Redis 内存泄漏`：直接将当前对话重命名为指定标题
-
-### 方式二：手动指定标题
-直接对 Antigravity 说：
-- `把当前对话标题改为「排查 Redis 内存泄漏」`
-- `重命名这个对话为 Auth Refactor`
-
-### 方式三：让 Antigravity 自动总结并改名
-- `根据目前聊的内容，更新一下当前对话标题`
-
-### 方式四：主题偏离时自动触发（安装了混合规则后）
-当你从最初的问题（例如“你好，帮我看个报错”）逐步深入到具体工程任务（例如“重构登录鉴权中间件”）后，Antigravity 会在合适时机自动调用 `get_conversation_title` 检查现有标题，确认偏离后调用 `rename_conversation` 更新标题，且不会在主题未变时反复改名。
-
-### 方式五：查看或整理历史对话
-- `列出最近 10 条对话`
-- `把刚才那个标题为 "Untitled" 的历史对话改成「部署 Docker 监控栈」`
+> 如需指定自定义 Antigravity 数据目录，可在该节点下添加 `"env": { "ANTIGRAVITY_DATA_DIR": "/custom/path" }`（默认 `~/.gemini/antigravity`）。
 
 ---
 
@@ -142,10 +169,14 @@ cp ./templates/skills/rename/SKILL.md ~/.gemini/config/skills/rename/SKILL.md
 │   ├── protoPatcher.ts   # 零依赖无损 Protobuf Wire 解析器与局部字段 Patcher
 │   ├── sqliteStore.ts    # SQLite WAL 事务读写（conversation_summaries + FTS5）
 │   └── paths.ts          # 数据路径解析与 conversation_id 安全校验
+├── scripts/
+│   ├── setup.mjs         # 一键编译、测试并无损写入全局配置
+│   └── uninstall.mjs     # 一键安全卸载全局配置（保留已有对话）
 ├── tests/
 │   ├── pbtxtPatcher.test.ts
 │   ├── protoPatcher.test.ts
-│   └── renamer.e2e.test.ts
+│   ├── renamer.e2e.test.ts
+│   └── setup.test.ts
 ├── templates/
 │   ├── mcp_config.snippet.json
 │   ├── conversation-auto-rename.md
@@ -161,33 +192,38 @@ cp ./templates/skills/rename/SKILL.md ~/.gemini/config/skills/rename/SKILL.md
 
 ```sh
 npm run build   # 编译 TypeScript 至 dist/
-npm test        # 编译并运行全部单元测试与 Stdio MCP 端到端沙盒测试
+npm test        # 编译并运行全部单元测试、安装脚本测试与 Stdio MCP 端到端沙盒测试
 ```
 
 ---
 
 ## 卸载
 
-卸载本 MCP 不会影响或删除任何已有对话记录，已修改好的对话标题也会继续保留。按以下步骤即可彻底清理：
+卸载本 MCP **不会影响或删除任何已有对话记录**，已修改好的对话标题也会继续保留。
 
-1. **移除全局 MCP 配置**：编辑 `~/.gemini/config/mcp_config.json`，删除 `mcpServers` 中的 `conversation-renamer` 字段并保存。
-2. **删除自动触发规则与 `/rename` Skill**（如曾安装）：
-   ```sh
-   rm -f ~/.gemini/config/rules/conversation-auto-rename.md
-   rm -rf ~/.gemini/config/skills/rename
-   ```
-3. **生效清理**：重启 Antigravity（或在 **Additional Options (`...`) → MCP Servers** 中刷新）。
-4. **删除本地代码目录**（可选）：
-   ```sh
-   rm -rf /ABSOLUTE/PATH/TO/antigravity-conversation-renamer-mcp
-   ```
+### 一键让 AI 帮我卸载
+在 Antigravity 中直接发送：
+```text
+请按 https://github.com/falconchen/antigravity-conversation-renamer-mcp 的卸载说明帮我卸载 conversation-renamer MCP 并清理本地安装目录。
+```
+
+### 手动一键卸载
+在安装目录下执行：
+```sh
+cd ~/.local/share/antigravity-conversation-renamer-mcp
+npm run uninstall-agy
+cd ~ && rm -rf ~/.local/share/antigravity-conversation-renamer-mcp
+```
+然后重启 Antigravity（或在 **Additional Options (`...`) → MCP Servers** 中刷新）即可。
+
+（也可纯手工清理：从 `~/.gemini/config/mcp_config.json` 移除 `conversation-renamer` 节点，并执行 `rm -f ~/.gemini/config/rules/conversation-auto-rename.md && rm -rf ~/.gemini/config/skills/rename`。）
 
 ---
 
 ## 常见问题
 
 1. **Antigravity 中看不到 `conversation-renamer` 或启动报错 `spawn node ENOENT`**
-   - 检查 `~/.gemini/config/mcp_config.json` 中的 `command` 是否为 `which node` 返回的绝对路径，且版本 `>= 22.5.0`。
+   - 确认 `~/.gemini/config/mcp_config.json` 中的 `command` 是 `which node` 返回的绝对路径，且版本 `>= 22.5.0`（使用 `npm run setup` 会自动写入正确路径）。
 2. **修改历史对话标题后，左侧边栏没有立刻变化？**
    - 活跃对话会由 `language_server` 实时同步刷新；历史空闲对话如前端缓存尚未重绘，切换列表或重新加载客户端即可看到最新标题，且全文搜索（FTS5）立即生效。
 3. **会损坏 Antigravity 的对话数据吗？**
