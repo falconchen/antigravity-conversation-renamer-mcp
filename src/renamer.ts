@@ -11,6 +11,7 @@ import { extractSummaryTitles, patchSummariesProtoCache } from "./protoPatcher.j
 import {
   getConversationSummary,
   listRecentConversations,
+  type ListRecentConversationsOptions,
   type RecentConversationItem,
   updateConversationTitleInDb,
 } from "./sqliteStore.js";
@@ -36,6 +37,7 @@ export interface RenameConversationResult {
   oldTitle: string;
   newTitle: string;
   reason?: string;
+  uiRefreshHint: "active_live_sync" | "idle_restart_required" | "unchanged";
   updatedTargets: {
     pbtxt: boolean;
     sqliteSummaries: boolean;
@@ -100,14 +102,13 @@ export function getConversationTitleInfo(
 }
 
 /**
- * 列出最近的对话列表。
+ * 列出最近的对话列表，支持按工作区路径或目录名筛选。
  */
 export function listConversations(
-  limit = 10,
-  includeSubagents = false,
+  options: ListRecentConversationsOptions = {},
   paths: AntigravityPaths = resolveAntigravityPaths(),
 ): RecentConversationItem[] {
-  return listRecentConversations(paths.summariesDbPath, limit, includeSubagents);
+  return listRecentConversations(paths.summariesDbPath, options);
 }
 
 /**
@@ -173,6 +174,7 @@ export function renameConversation(
       oldTitle: current.dbTitle,
       newTitle,
       reason: options?.reason,
+      uiRefreshHint: "unchanged",
       updatedTargets: {
         pbtxt: false,
         sqliteSummaries: false,
@@ -209,6 +211,7 @@ export function renameConversation(
     oldTitle: dbRes.oldTitle || current.pbtxtTitle || "",
     newTitle,
     reason: options?.reason,
+    uiRefreshHint: dbRes.wasActive ? "active_live_sync" : "idle_restart_required",
     updatedTargets: {
       pbtxt: true,
       sqliteSummaries: true,

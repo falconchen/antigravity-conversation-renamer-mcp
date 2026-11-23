@@ -22,12 +22,21 @@ export interface RecentConversationItem {
   stepCount: number;
   status: string;
   isSubagent: boolean;
+  projectId: string;
+  workspacePaths: string[];
+}
+
+export interface ListRecentConversationsOptions {
+  limit?: number;
+  includeSubagents?: boolean;
+  workspace?: string;
 }
 
 export interface DbRenameResult {
   oldTitle: string;
   patchedRawSummary: Buffer;
   ftsUpdated: boolean;
+  wasActive: boolean;
 }
 
 function toBuffer(val: unknown): Buffer {
@@ -97,38 +106,107 @@ export function getConversationSummary(
   }
 }
 
+function normalizeWorkspacePath(raw: string): string {
+  let value = raw.trim();
+  if (value.startsWith("file://")) {
+    try {
+      value = decodeURIComponent(new URL(value).pathname);
+    } catch {
+      value = value.replace(/^file:\/\//, "");
+      try {
+        value = decodeURIComponent(value);
+      } catch {
+        // 保持原始字符串
+      }
+    }
+  } else {
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      // 保持原始字符串
+    }
+  }
+  return value.length > 1 ? value.replace(/\/+$/, "") : value;
+}
+
+function parseWorkspacePaths(rawJson: string): string[] {
+  if (!rawJson) return [];
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map(normalizeWorkspacePath);
+    }
+  } catch {
+    // 忽略非法 JSON
+  }
+  return [];
+}
+
+function matchesWorkspaceFilter(workspacePaths: string[], rawJson: string, filter: string): boolean {
+  const normalizedFilter = normalizeWorkspacePath(filter).toLowerCase();
+  if (!normalizedFilter) return true;
+  if (workspacePaths.some((p) => p.toLowerCase() === normalizedFilter || p.toLowerCase().includes(normalizedFilter))) {
+    return true;
+  }
+  return rawJson.toLowerCase().includes(normalizedFilter);
+}
+
 /**
- * 列出最近的未删除对话，便于查询或指定重命名其他历史对话。
+ * 列出最近的未删除对话，支持按工作区路径/目录名过滤。
  */
 export function listRecentConversations(
   dbPath: string,
-  limit = 10,
-  includeSubagents = false,
+  options: ListRecentConversationsOptions = {},
 ): RecentConversationItem[] {
-  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(options.limit ?? 10)));
+  const includeSubagents = options.includeSubagents ?? false;
+  const workspaceFilter = options.workspace?.trim() ?? "";
   const db = openDb(dbPath, true);
   try {
-    const sql = includeSubagents
-      ? `SELECT conversation_id, title, last_modified_time, step_count, status, parent_conversation_id
+    const baseWhere = includeSubagents
+      ? "WHERE killed = 0"
+      : "WHERE killed = 0 AND parent_conversation_id = ''";
+
+    const sql = workspaceFilter
+      ? `SELECT conversation_id, title, last_modified_time, step_count, status,
+                parent_conversation_id, project_id, workspace_uris
          FROM conversation_summaries
-         WHERE killed = 0
-         ORDER BY last_modified_time DESC
-         LIMIT ?`
-      : `SELECT conversation_id, title, last_modified_time, step_count, status, parent_conversation_id
+         ${baseWhere}
+         ORDER BY last_modified_time DESC`
+      : `SELECT conversation_id, title, last_modified_time, step_count, status,
+                parent_conversation_id, project_id, workspace_uris
          FROM conversation_summaries
-         WHERE killed = 0 AND parent_conversation_id = ''
+         ${baseWhere}
          ORDER BY last_modified_time DESC
          LIMIT ?`;
 
-    const rows = db.prepare(sql).all(safeLimit) as Record<string, unknown>[];
-    return rows.map((row) => ({
-      conversationId: toStringVal(row.conversation_id),
-      title: toStringVal(row.title),
-      lastModifiedTime: toStringVal(row.last_modified_time),
-      stepCount: toNumber(row.step_count),
-      status: toStringVal(row.status),
-      isSubagent: toStringVal(row.parent_conversation_id).length > 0,
-    }));
+    const rows = (
+      workspaceFilter ? db.prepare(sql).all() : db.prepare(sql).all(safeLimit)
+    ) as Record<string, unknown>[];
+
+    const items: RecentConversationItem[] = [];
+    for (const row of rows) {
+      const rawWorkspaceUris = toStringVal(row.workspace_uris);
+      const workspacePaths = parseWorkspacePaths(rawWorkspaceUris);
+      if (workspaceFilter && !matchesWorkspaceFilter(workspacePaths, rawWorkspaceUris, workspaceFilter)) {
+        continue;
+      }
+      items.push({
+        conversationId: toStringVal(row.conversation_id),
+        title: toStringVal(row.title),
+        lastModifiedTime: toStringVal(row.last_modified_time),
+        stepCount: toNumber(row.step_count),
+        status: toStringVal(row.status),
+        isSubagent: toStringVal(row.parent_conversation_id).length > 0,
+        projectId: toStringVal(row.project_id),
+        workspacePaths,
+      });
+      if (items.length >= safeLimit) break;
+    }
+
+    return items;
   } finally {
     db.close();
   }
@@ -151,7 +229,7 @@ export function updateConversationTitleInDb(
 
     const row = db
       .prepare(
-        `SELECT title, raw_summary
+        `SELECT title, raw_summary, status, not_fully_idle
          FROM conversation_summaries
          WHERE conversation_id = ?`,
       )
@@ -163,6 +241,8 @@ export function updateConversationTitleInDb(
 
     const oldTitle = toStringVal(row.title);
     const rawSummary = toBuffer(row.raw_summary);
+    const wasActive =
+      toNumber(row.not_fully_idle) !== 0 || toStringVal(row.status) === "CASCADE_RUN_STATUS_RUNNING";
     const patchedRawSummary = patchCascadeSummaryTitle(rawSummary, newTitle, nowDate);
 
     db.prepare(
@@ -230,6 +310,7 @@ export function updateConversationTitleInDb(
       oldTitle,
       patchedRawSummary,
       ftsUpdated,
+      wasActive,
     };
   } catch (err) {
     if (inTransaction) {

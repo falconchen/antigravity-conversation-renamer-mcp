@@ -100,19 +100,24 @@ export function createConversationRenamerServer(
 
   server.tool(
     "list_recent_conversations",
-    "List recent non-deleted Antigravity conversations with their IDs, titles, and modification times.",
+    "List recent non-deleted Antigravity conversations with their IDs, titles, workspace paths, project IDs, and modification times. Optionally filter by workspace path or folder name (e.g. from Active Workspaces in <user_information>).",
     {
       limit: z
         .number()
         .int()
         .min(1)
-        .max(50)
+        .max(100)
         .optional()
-        .describe("Maximum number of recent conversations to return (default 10, max 50)."),
+        .describe("Maximum number of recent conversations to return (default 10, max 100)."),
       include_subagents: z
         .boolean()
         .optional()
         .describe("Whether to include subagent child conversations (default false)."),
+      workspace: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Optional workspace path, file:// URI, or folder name substring to filter conversations (case-insensitive, supports URL-encoded non-ASCII paths)."),
     },
     {
       title: "List Recent Conversations",
@@ -121,9 +126,16 @@ export function createConversationRenamerServer(
       idempotentHint: true,
       openWorldHint: false,
     },
-    async ({ limit, include_subagents }) => {
+    async ({ limit, include_subagents, workspace }) => {
       try {
-        const items = listConversations(limit ?? 10, include_subagents ?? false, paths);
+        const items = listConversations(
+          {
+            limit: limit ?? 10,
+            includeSubagents: include_subagents ?? false,
+            workspace,
+          },
+          paths,
+        );
         return {
           content: [{ type: "text", text: JSON.stringify({ count: items.length, conversations: items }, null, 2) }],
         };

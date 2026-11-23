@@ -23,11 +23,13 @@ const DIST_INDEX_PATH = path.resolve(__dirname, "../src/index.js");
 function createSandboxAntigravityDir(): {
   dataDir: string;
   convId: string;
+  idleConvId: string;
   subagentConvId: string;
   cleanup: () => void;
 } {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-renamer-e2e-"));
   const convId = "11111111-2222-3333-4444-555555555555";
+  const idleConvId = "22222222-2222-3333-4444-555555555555";
   const subagentConvId = "99999999-2222-3333-4444-555555555555";
 
   const annotationsDir = path.join(dataDir, "annotations");
@@ -35,6 +37,11 @@ function createSandboxAntigravityDir(): {
   fs.writeFileSync(
     path.join(annotationsDir, `${convId}.pbtxt`),
     'title:"Initial Off-Topic Title" last_user_view_time:{seconds:1795410613 nanos:39000000}',
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(annotationsDir, `${idleConvId}.pbtxt`),
+    'title:"Idle Remote Host Chat" last_user_view_time:{seconds:1795410000 nanos:0}',
     "utf8",
   );
 
@@ -45,6 +52,7 @@ function createSandboxAntigravityDir(): {
     ]),
     "Initial Off-Topic Title",
   );
+  const idleRawSummary = patchCascadeSummaryTitle(Buffer.alloc(0), "Idle Remote Host Chat");
   const subRawSummary = patchCascadeSummaryTitle(Buffer.alloc(0), "Subagent Task");
 
   const dbPath = path.join(dataDir, "conversation_summaries.db");
@@ -119,6 +127,30 @@ function createSandboxAntigravityDir(): {
   db.prepare(
     `INSERT INTO conversation_summaries (
        conversation_id, title, preview, step_count, last_modified_time, workspace_uris,
+       status, project_id, parent_conversation_id, not_fully_idle, killed,
+       last_user_input_time, last_user_input_step_index, app_data_dir, raw_summary
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    idleConvId,
+    "Idle Remote Host Chat",
+    "Idle Remote Host Chat",
+    6,
+    "2026-11-23 05:05:00.000000+00:00",
+    '["file:///path/to/%E8%BF%9C%E7%A8%8B%E4%B8%BB%E6%9C%BA"]',
+    "CASCADE_RUN_STATUS_IDLE",
+    "proj-remote-host",
+    "",
+    0,
+    0,
+    "2026-11-23 05:04:00.000000+00:00",
+    4,
+    "antigravity",
+    idleRawSummary,
+  );
+
+  db.prepare(
+    `INSERT INTO conversation_summaries (
+       conversation_id, title, preview, step_count, last_modified_time, workspace_uris,
        status, parent_conversation_id, not_fully_idle, killed,
        last_user_input_time, last_user_input_step_index, app_data_dir, raw_summary
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -172,6 +204,7 @@ function createSandboxAntigravityDir(): {
   return {
     dataDir,
     convId,
+    idleConvId,
     subagentConvId,
     cleanup: () => fs.rmSync(dataDir, { recursive: true, force: true }),
   };
@@ -200,15 +233,29 @@ test("Stdio MCP Server 端到端链路测试（list -> get -> rename -> 幂等�
       "rename_conversation",
     ]);
 
-    // 1. list_recent_conversations（默认过滤子代理）
+    // 1. list_recent_conversations（默认过滤子代理，返回工作区路径与 projectId）
     const listRes = await client.callTool({
       name: "list_recent_conversations",
       arguments: { limit: 10 },
     });
     const listText = (listRes.content as Array<{ type: string; text: string }>)[0].text;
     const listJson = JSON.parse(listText);
-    assert.equal(listJson.count, 1);
+    assert.equal(listJson.count, 2);
     assert.equal(listJson.conversations[0].conversationId, sandbox.convId);
+    assert.deepEqual(listJson.conversations[0].workspacePaths, ["/path/to/workspace"]);
+
+    // 1b. list_recent_conversations 按中文工作区名过滤（兼容 URL 编码 URI）
+    const filteredRes = await client.callTool({
+      name: "list_recent_conversations",
+      arguments: { limit: 10, workspace: "远程主机" },
+    });
+    const filteredJson = JSON.parse(
+      (filteredRes.content as Array<{ type: string; text: string }>)[0].text,
+    );
+    assert.equal(filteredJson.count, 1);
+    assert.equal(filteredJson.conversations[0].conversationId, sandbox.idleConvId);
+    assert.equal(filteredJson.conversations[0].projectId, "proj-remote-host");
+    assert.deepEqual(filteredJson.conversations[0].workspacePaths, ["/path/to/远程主机"]);
 
     // 2. get_conversation_title
     const getRes = await client.callTool({
@@ -234,6 +281,7 @@ test("Stdio MCP Server 端到端链路测试（list -> get -> rename -> 幂等�
       (renameRes.content as Array<{ type: string; text: string }>)[0].text,
     );
     assert.equal(renameJson.changed, true);
+    assert.equal(renameJson.uiRefreshHint, "active_live_sync");
     assert.equal(renameJson.oldTitle, "Initial Off-Topic Title");
     assert.equal(renameJson.newTitle, "重构 SQLite 同步模块 与缓存测试");
     assert.deepEqual(renameJson.updatedTargets, {
@@ -302,6 +350,21 @@ test("Stdio MCP Server 端到端链路测试（list -> get -> rename -> 幂等�
       (repeatRes.content as Array<{ type: string; text: string }>)[0].text,
     );
     assert.equal(repeatJson.changed, false);
+    assert.equal(repeatJson.uiRefreshHint, "unchanged");
+
+    // 6. 重命名历史空闲对话 -> 返回 idle_restart_required
+    const idleRenameRes = await client.callTool({
+      name: "rename_conversation",
+      arguments: {
+        conversation_id: sandbox.idleConvId,
+        new_title: "远程主机整理归档",
+      },
+    });
+    const idleRenameJson = JSON.parse(
+      (idleRenameRes.content as Array<{ type: string; text: string }>)[0].text,
+    );
+    assert.equal(idleRenameJson.changed, true);
+    assert.equal(idleRenameJson.uiRefreshHint, "idle_restart_required");
   } finally {
     await client.close();
     sandbox.cleanup();

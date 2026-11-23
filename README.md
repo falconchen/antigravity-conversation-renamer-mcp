@@ -152,8 +152,8 @@ npm run setup
 | 工具名 | 只读/写入 | 入参 | 说明 |
 | :--- | :---: | :--- | :--- |
 | `get_conversation_title` | 只读 | `conversation_id` | 读取指定会话在数据库、`.pbtxt` 与 Protobuf 中的当前标题、步数及同步状态（`inSync`） |
-| `rename_conversation` | 写入（幂等） | `conversation_id`, `new_title`, `reason?` | 自动清洗标题换行与多余空白，无损同步更新 `.pbtxt`、SQLite 主表、FTS5 索引与缓存快照 |
-| `list_recent_conversations` | 只读 | `limit?` (1–50), `include_subagents?` | 列出最近未删除的对话 ID、标题与最后修改时间（默认过滤子代理对话） |
+| `rename_conversation` | 写入（幂等） | `conversation_id`, `new_title`, `reason?` | 自动清洗标题换行与多余空白，无损同步更新 `.pbtxt`、SQLite 主表、FTS5 索引与缓存快照，并返回 `uiRefreshHint` 提示是否需重启刷新 |
+| `list_recent_conversations` | 只读 | `limit?` (1–100), `workspace?`, `include_subagents?` | 列出最近未删除的对话 ID、标题、工作区路径（`workspacePaths`）、`projectId` 与最后修改时间，支持按工作区路径/目录名过滤（兼容中文 URL 编码路径） |
 
 ---
 
