@@ -111,8 +111,9 @@ npm install; if ($LASTEXITCODE -eq 0) { npm run setup }
 - `把刚才那个标题为 "Untitled" 的历史对话改成「部署 Docker 监控栈」`
 
 > **批量修改历史空闲（IDLE）对话后的生效说明**：
-> - **当前正在聊的活跃对话**改名后会实时刷新且重启不丢失；
-> - **历史空闲对话**由于运行中的 Antigravity 在内存里缓存了旧摘要，普通退出（`Cmd+Q`）时退出保存钩子会把内存旧标题写回数据库（但 `annotations/*.pbtxt` 中的新标题会完好保留）。批量整理完历史标题后，运行一次一键冷同步刷新命令即可阻断退出脏写回、把所有 `.pbtxt` 新标题同步回数据库并重新拉起 Antigravity：
+> - **当前正在聊的活跃对话**：改名后会实时刷新且重启不丢失；
+> - **少量历史空闲对话（免重启技巧）**：在侧边栏直接点开一次该对话，Antigravity 会立即重读 `annotations/<id>.pbtxt`，实时刷新侧边栏标题并同步到内存与数据库；
+> - **大批量历史空闲对话（不想逐条点开）**：由于运行中的 Antigravity 在内存里缓存了旧摘要，普通退出（`Cmd+Q`）时退出保存钩子会把内存旧标题写回数据库（但 `annotations/*.pbtxt` 中的新标题会完好保留）。运行一次一键冷同步刷新命令即可阻断退出脏写回、把所有 `.pbtxt` 新标题同步回数据库并重新拉起 Antigravity：
 >   ```sh
 >   cd ~/.local/share/antigravity-conversation-renamer-mcp
 >   npm run sync-relaunch
