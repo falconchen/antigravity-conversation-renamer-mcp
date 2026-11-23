@@ -80,7 +80,16 @@ cp ./templates/conversation-auto-rename.md ~/.gemini/config/rules/conversation-a
 
 > 如果你只希望在自己明确开口要求时才改名，可以跳过此步骤，仅配置第 2 步的 MCP 即可。
 
-### 4. 重启或刷新 Antigravity
+### 4. （可选）安装 `/rename` 斜杠命令 Skill
+
+若希望在输入框中直接键入 `/rename` 一键触发重命名，将 [`templates/skills/rename/SKILL.md`](./templates/skills/rename/SKILL.md) 复制到全局 Skills 目录：
+
+```sh
+mkdir -p ~/.gemini/config/skills/rename
+cp ./templates/skills/rename/SKILL.md ~/.gemini/config/skills/rename/SKILL.md
+```
+
+### 5. 重启或刷新 Antigravity
 
 重启 Antigravity（或在菜单 **Additional Options (`...`) → MCP Servers** 中刷新）即可生效。
 
@@ -90,18 +99,22 @@ cp ./templates/conversation-auto-rename.md ~/.gemini/config/rules/conversation-a
 
 启用后，你可以在任意对话中直接使用以下方式：
 
-### 方式一：手动指定标题
+### 方式一：`/rename` 斜杠命令（安装了 Skill 后）
+- `/rename`：自动根据当前对话内容总结最贴切的新标题并更新
+- `/rename 排查 Redis 内存泄漏`：直接将当前对话重命名为指定标题
+
+### 方式二：手动指定标题
 直接对 Antigravity 说：
 - `把当前对话标题改为「排查 Redis 内存泄漏」`
 - `重命名这个对话为 Auth Refactor`
 
-### 方式二：让 Antigravity 自动总结并改名
+### 方式三：让 Antigravity 自动总结并改名
 - `根据目前聊的内容，更新一下当前对话标题`
 
-### 方式三：主题偏离时自动触发（安装了混合规则后）
+### 方式四：主题偏离时自动触发（安装了混合规则后）
 当你从最初的问题（例如“你好，帮我看个报错”）逐步深入到具体工程任务（例如“重构登录鉴权中间件”）后，Antigravity 会在合适时机自动调用 `get_conversation_title` 检查现有标题，确认偏离后调用 `rename_conversation` 更新标题，且不会在主题未变时反复改名。
 
-### 方式四：查看或整理历史对话
+### 方式五：查看或整理历史对话
 - `列出最近 10 条对话`
 - `把刚才那个标题为 "Untitled" 的历史对话改成「部署 Docker 监控栈」`
 
@@ -135,7 +148,10 @@ cp ./templates/conversation-auto-rename.md ~/.gemini/config/rules/conversation-a
 │   └── renamer.e2e.test.ts
 ├── templates/
 │   ├── mcp_config.snippet.json
-│   └── conversation-auto-rename.md
+│   ├── conversation-auto-rename.md
+│   └── skills/
+│       └── rename/
+│           └── SKILL.md
 └── README.md
 ```
 
@@ -155,9 +171,10 @@ npm test        # 编译并运行全部单元测试与 Stdio MCP 端到端沙盒
 卸载本 MCP 不会影响或删除任何已有对话记录，已修改好的对话标题也会继续保留。按以下步骤即可彻底清理：
 
 1. **移除全局 MCP 配置**：编辑 `~/.gemini/config/mcp_config.json`，删除 `mcpServers` 中的 `conversation-renamer` 字段并保存。
-2. **删除自动触发规则**（如曾安装）：
+2. **删除自动触发规则与 `/rename` Skill**（如曾安装）：
    ```sh
    rm -f ~/.gemini/config/rules/conversation-auto-rename.md
+   rm -rf ~/.gemini/config/skills/rename
    ```
 3. **生效清理**：重启 Antigravity（或在 **Additional Options (`...`) → MCP Servers** 中刷新）。
 4. **删除本地代码目录**（可选）：
