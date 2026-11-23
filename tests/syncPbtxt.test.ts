@@ -42,7 +42,11 @@ test("syncAllPbtxtToStore 将被退出钩子覆写回旧标题的历史对话按
       ]),
       "复查ivm1限速",
     );
-    const sameRaw2 = patchCascadeSummaryTitle(makeVarintField(2, 10n), "已一致的标题");
+    const sameRaw2 = Buffer.concat([
+      makeLengthDelimitedField(1, Buffer.from("首条提问预览内容", "utf8")),
+      makeVarintField(2, 10n),
+      makeLengthDelimitedField(15, makeLengthDelimitedField(1, Buffer.from("已一致的标题", "utf8"))),
+    ]);
 
     const db = new DatabaseSync(paths.summariesDbPath, { readBigInts: true });
     db.exec(`
@@ -89,7 +93,7 @@ test("syncAllPbtxtToStore 将被退出钩子覆写回旧标题的历史对话按
        ) VALUES (?, ?, ?, ?, ?, ?, ?, '', 0, 0, ?, 1, ?)`,
     );
     ins.run(conv1, "复查ivm1限速", "复查ivm1限速", 127, "2026-11-23 02:54:53+00:00", "[]", "CASCADE_RUN_STATUS_IDLE", "2026-11-23 02:50:00+00:00", oldRaw1);
-    ins.run(conv2, "已一致的标题", "已一致的标题", 10, "2026-11-23 01:00:00+00:00", "[]", "CASCADE_RUN_STATUS_IDLE", "2026-11-23 01:00:00+00:00", sameRaw2);
+    ins.run(conv2, "已一致的标题", "首条提问预览内容", 10, "2026-11-23 01:00:00+00:00", "[]", "CASCADE_RUN_STATUS_IDLE", "2026-11-23 01:00:00+00:00", sameRaw2);
 
     db.prepare(
       `INSERT INTO conversations_fts (

@@ -135,15 +135,13 @@ export function syncAllPbtxtToStore(options?: {
       if (!pbtxtTitle) continue;
 
       const dbTitle = toStringVal(row.title);
-      const dbPreview = toStringVal(row.preview);
       const rawSummary = toBuffer(row.raw_summary);
       const protoTitles = extractSummaryTitles(rawSummary);
 
+      // 仅当数据库 title 或 annotations.title (15.1) 与 .pbtxt 标题不一致时才同步，
+      // 避免误触 preview 存放首句摘要的迁移/历史对话。
       const needsSync =
-        dbTitle !== pbtxtTitle ||
-        dbPreview !== pbtxtTitle ||
-        protoTitles.summaryField1 !== pbtxtTitle ||
-        protoTitles.annotationField15_1 !== pbtxtTitle;
+        dbTitle !== pbtxtTitle || protoTitles.annotationField15_1 !== pbtxtTitle;
 
       if (needsSync) {
         const status = toStringVal(row.status);
